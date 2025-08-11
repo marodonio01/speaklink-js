@@ -8,9 +8,9 @@
   // Style toggle icon
   Object.assign(toggleIcon.style, {
     position: 'fixed',
-    bottom: '20px',
-    left: '20px',
-    width: '200px',
+    bottom: '73px',
+    right: '20px',
+    width: '92px',
     borderRadius: '24px',
     border: 'none',
     cursor: 'pointer',
@@ -154,11 +154,11 @@
       <div class="image-container" style="display:flex; gap:10px; margin-bottom:10px;">
         <div class="image-box" style="flex:1; text-align:center;">
           <h4>Uploaded Image:</h4>
-          <img id="uploaded-img" src="https://marodonio01.github.io/speaklink-js/loading.gif" alt="Uploaded Image" style="max-width:20%; border:1px solid #ccc; border-radius:4px;" />
+          <img id="uploaded-img" src="loading.gif" alt="Uploaded Image" style="max-width:10%; border:1px solid #ccc; border-radius:4px;" />
         </div>
         <div class="image-box" style="flex:1; text-align:center;">
           <h4>Translated Overlay Image:</h4>
-          <img id="overlay-img" src="https://marodonio01.github.io/speaklink-js/loading.gif" alt="Overlay Image" style="max-width:20%; border:1px solid #ccc; border-radius:4px;" />
+          <img id="overlay-img" src="loading.gif" alt="Overlay Image" style="max-width:10%; border:1px solid #ccc; border-radius:4px;" />
         </div>
       </div>
       <h4>Extracted & Translated Text:</h4>
@@ -371,6 +371,7 @@
   speechController.renderTranslationLines(translatedLines, mapTargetToTtsLang(targetLang));
 
   const overlayImgEl = widget.querySelector('#overlay-img');
+  overlayImgEl.style.maxWidth = '100%';
   if (overlayImgEl) overlayImgEl.src = overlayCanvas.toDataURL('image/png');
 }
 
@@ -397,7 +398,12 @@ widget.querySelector('#uploadImage').addEventListener('change', (e) => {
 
   img.onload = async () => {
     console.log('Image loaded:', img);
-    lastUploadedImage = img;
+	lastUploadedImage = img;
+const uploadedImgEl = widget.querySelector('#uploaded-img');
+uploadedImgEl.src = img.src;
+uploadedImgEl.style.setProperty('max-width', '100%', 'important');
+	
+	 console.log('Image loaded:', lastUploadedImage);
     widget.querySelector('#uploaded-img').src = img.src;
 
     // Define cropRect as full image for now
