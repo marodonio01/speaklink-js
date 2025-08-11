@@ -3,7 +3,7 @@
   const toggleIcon = document.createElement('img');
   toggleIcon.id = 'speaklink-toggle-icon';
   toggleIcon.title = 'Open SpeakLink Translator';
-  toggleIcon.src = 'speaklinkicon.gif'; // Update if path different
+  toggleIcon.src = 'https://marodonio01.github.io/speaklink-js/speaklinkicon.gif'; // Update if path different
 
   // Style toggle icon
   Object.assign(toggleIcon.style, {
@@ -288,7 +288,7 @@
       btn.className = "line-speak-btn";
       btn.title = "Read this line";
       const img = document.createElement("img");
-      img.src = "talkperson.png";  // Update path as needed
+      img.src = "https://marodonio01.github.io/speaklink-js/talkperson.png";  // Update path as needed
       img.alt = "Speak";
       btn.appendChild(img);
       btn.addEventListener("click", () => speakForLine(line, ttsLang, wrapper));
