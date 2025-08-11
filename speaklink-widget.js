@@ -154,11 +154,11 @@
       <div class="image-container" style="display:flex; gap:10px; margin-bottom:10px;">
         <div class="image-box" style="flex:1; text-align:center;">
           <h4>Uploaded Image:</h4>
-          <img id="uploaded-img" alt="Uploaded Image" style="max-width:100%; border:1px solid #ccc; border-radius:4px;" />
+          <img id="uploaded-img" src="https://marodonio01.github.io/speaklink-js/loading.gif" alt="Uploaded Image" style="max-width:20%; border:1px solid #ccc; border-radius:4px;" />
         </div>
         <div class="image-box" style="flex:1; text-align:center;">
           <h4>Translated Overlay Image:</h4>
-          <img id="overlay-img" alt="Overlay Image" style="max-width:100%; border:1px solid #ccc; border-radius:4px;" />
+          <img id="overlay-img" src="https://marodonio01.github.io/speaklink-js/loading.gif" alt="Overlay Image" style="max-width:20%; border:1px solid #ccc; border-radius:4px;" />
         </div>
       </div>
       <h4>Extracted & Translated Text:</h4>
