@@ -141,13 +141,26 @@
         padding: 5px;
         font-size: 14px;
       }
+	  label#uploadImgLbl {
+		  background-color: #007bff;
+		  color: white;
+		  border: none;
+		  padding: 8px 12px;
+		  cursor: pointer;
+		  border-radius: 4px;
+		  width: 35%;
+		}
+
+		label#uploadImgLbl:hover {
+		  background-color: #0056b3;
+		}
     </style>
     <div id="speaklink-header" style="background:#0366d6; color:white; font-weight:bold; padding:8px 10px; cursor:move; display:flex; justify-content:space-between; align-items:center; border-radius: 6px 6px 0 0;">
       SpeakLink Translator
       <button id="speaklink-close-btn" title="Close widget" style="background:transparent; border:none; color:white; font-size:20px; line-height:1; cursor:pointer;">&times;</button>
     </div>
     <div id="speaklink-content" style="padding:10px; max-height:480px; overflow-y:auto;">
-      <label for="uploadImage" style="display:block; margin-bottom:10px; cursor:pointer;">
+      <label id="uploadImgLbl" for="uploadImage" style="display:block; margin-bottom:10px; cursor:pointer;">
         📁 Upload Image to Translate
       </label>
       <input type="file" id="uploadImage" accept="image/*" style="display:none" />
@@ -227,48 +240,15 @@
   let lastOcrLines = null;
   let lastScale = 1;
 
-  // Text-to-Speech Setup
-  let voices = [];
-  function loadVoices() {
-    voices = speechSynthesis.getVoices() || [];
-    voices.sort((a,b) => {
-      const score = n => {
-        n = (n || "").toLowerCase();
-        if (n.includes("google")) return 3;
-        if (n.includes("neural") || n.includes("wave")) return 2;
-        if (n.includes("natural")) return 2;
-        return 0;
-      };
-      return score(b.name) - score(a.name);
-    });
-  }
-  speechSynthesis.onvoiceschanged = loadVoices;
-  loadVoices();
-
-  function getBestVoice(langCode) {
-    langCode = (langCode || "").toLowerCase();
-    let v = voices.find(x => x.lang && x.lang.toLowerCase().startsWith(langCode));
-    if (v) return v;
-    v = voices.find(x => /google|neural|natural|wave/i.test(x.name || ""));
-    return v || voices[0] || null;
-  }
-
   function speakForLine(text, ttsLang, wrapperEl) {
-    if (!text || !text.trim()) return;
-    try { speechSynthesis.cancel(); } catch(e){}
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = ttsLang || "en-US";
-    const v = getBestVoice(u.lang);
-    if (v) u.voice = v;
-    u.rate = 1.0;
-    u.pitch = 1.0;
-    u.onstart = () => { if(wrapperEl) wrapperEl.classList.add("line-reading"); };
-    u.onend = () => { if(wrapperEl) wrapperEl.classList.remove("line-reading"); };
-    u.onerror = () => {
-      if(wrapperEl) wrapperEl.classList.remove("line-reading");
-      console.log("TTS error for text:", text);
-    };
-    speechSynthesis.speak(u);
+	  if (!text || !text.trim()) return;
+
+	  // Optionally show the reading highlight
+	  if (wrapperEl) wrapperEl.classList.add("line-reading");
+
+	  speakWithElevenLabs(text).finally(() => {
+		if (wrapperEl) wrapperEl.classList.remove("line-reading");
+	  });
   }
 
   function renderLinesInto(container, lines, ttsLang) {
@@ -585,6 +565,40 @@ async function loadData(image, cropRect, devicePixelRatio = 1) {
     // Trigger image loading:
     image.src = image.src;  // Reset src to force onload if needed
   });
+}
+
+async function speakWithElevenLabs(text) {
+  const API_KEY = 'sk_4ca9a698d23bfb977bd17c99135db7c22f762ad4ed07214f'; // Replace with your key
+  const VOICE_ID = 'NEqPvTuKWuvwUMAEPBPR'; // Example: Rachel voice
+
+  try {
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'xi-api-key': API_KEY
+      },
+      body: JSON.stringify({
+        text: text,
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75
+        }
+      })
+    });
+
+    if (!response.ok) throw new Error(`ElevenLabs API error: ${response.status}`);
+
+    const audioData = await response.arrayBuffer();
+    const blob = new Blob([audioData], { type: 'audio/mpeg' });
+    const url = URL.createObjectURL(blob);
+
+    const audio = new Audio(url);
+    audio.play();
+
+  } catch (err) {
+    console.error('Error with ElevenLabs TTS:', err);
+  }
 }
 
 })();
