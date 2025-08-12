@@ -173,11 +173,11 @@
       <div class="image-container" style="display:flex; gap:10px; margin-bottom:10px;">
         <div class="image-box" style="flex:1; text-align:center;">
           <h4>Uploaded Image:</h4>
-          <img id="uploaded-img" src="loading.gif" alt="Uploaded Image" style="max-width:10%; border:1px solid #ccc; border-radius:4px;" />
+          <img id="uploaded-img" src="https://marodonio01.github.io/speaklink-js/loading.gif" alt="Uploaded Image" style="max-width:10%; border:1px solid #ccc; border-radius:4px;" />
         </div>
         <div class="image-box" style="flex:1; text-align:center;">
           <h4>Translated Overlay Image:</h4>
-          <img id="overlay-img" src="loading.gif" alt="Overlay Image" style="max-width:10%; border:1px solid #ccc; border-radius:4px;" />
+          <img id="overlay-img" src="https://marodonio01.github.io/speaklink-js/loading.gif" alt="Overlay Image" style="max-width:10%; border:1px solid #ccc; border-radius:4px;" />
         </div>
       </div>
       <h4>Extracted & Translated Text:</h4>
@@ -607,11 +607,6 @@ async function speakWithElevenLabs(text) {
   }
 }
 
-const AGENT_ID = "agent_6201k2ffwmaveefrthddgxr6mmfv"; // Replace with your agent ID
-
-
-
-
 function pcm16ToWav(pcmBytes, sampleRate = 16000) {
   const buffer = new ArrayBuffer(44 + pcmBytes.length);
   const view = new DataView(buffer);
@@ -627,11 +622,11 @@ function pcm16ToWav(pcmBytes, sampleRate = 16000) {
   view.setUint16(20, 1, true);  // PCM format
   view.setUint16(22, 1, true);  // Mono
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true); // Byte rate (SampleRate * NumChannels * BytesPerSample)
-  view.setUint16(32, 2, true);  // Block align (NumChannels * BytesPerSample)
+  view.setUint32(28, sampleRate * 2, true); // Byte rate
+  view.setUint16(32, 2, true);  // Block align
   view.setUint16(34, 16, true); // Bits per sample
 
-  // data sub-chunk
+  // Data sub-chunk
   writeString(view, 36, 'data');
   view.setUint32(40, pcmBytes.length, true);
 
@@ -647,40 +642,80 @@ function writeString(view, offset, string) {
   }
 }
 
-widget.querySelector('#callAgentBtn').addEventListener('click', async () => {
-  try {
-    // Connect WebSocket
-    //const ws = new WebSocket(signed_url || `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${AGENT_ID}`);
-const ws = new WebSocket(`wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${AGENT_ID}&api_key=YOUR_API_KEY`);
+// Float32 → PCM16 converter
+function floatTo16BitPCM(float32Array) {
+  const buffer = new ArrayBuffer(float32Array.length * 2);
+  const view = new DataView(buffer);
+  let offset = 0;
+  for (let i = 0; i < float32Array.length; i++, offset += 2) {
+    let s = Math.max(-1, Math.min(1, float32Array[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return new Uint8Array(buffer);
+}
 
-    ws.onopen = () => {
-      console.log('Connected to ElevenLabs agent via WebSocket');
+// === Call Agent Button with Mic Streaming ===
+widget.querySelector('#callAgentBtn').addEventListener('click', async () => {
+  const AGENT_ID = "agent_6201k2ffwmaveefrthddgxr6mmfv"; // Your agent ID
+  const API_KEY = "sk_4ca9a698d23bfb977bd17c99135db7c22f762ad4ed07214f"; // Replace with your ElevenLabs API key
+
+  try {
+    const wsUrl = `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${AGENT_ID}&api_key=${API_KEY}`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.binaryType = "arraybuffer";
+
+    ws.onopen = async () => {
+      console.log('✅ Connected to ElevenLabs agent');
       ws.send(JSON.stringify({ type: "conversation_initiation_client_data" }));
+
+      // === Start microphone capture ===
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioContext = new AudioContext({ sampleRate: 16000 });
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+
+      processor.onaudioprocess = (e) => {
+        const float32Data = e.inputBuffer.getChannelData(0);
+        const pcm16Data = floatTo16BitPCM(float32Data);
+        const base64Data = btoa(String.fromCharCode(...pcm16Data));
+        ws.send(JSON.stringify({
+          type: "input_audio_buffer.append",
+          audio: base64Data
+        }));
+      };
+
+      // Signal end of audio after 10 seconds (or you can make a stop button)
+      setTimeout(() => {
+        ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+      }, 10000);
     };
 
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.type === 'audio' && msg.audio_event?.audio_base_64) {
-    const pcmBytes = Uint8Array.from(atob(msg.audio_event.audio_base_64), c => c.charCodeAt(0));
-
-    // Convert PCM to WAV
-    const wavBuffer = pcm16ToWav(pcmBytes, 16000);
-    const blob = new Blob([wavBuffer], { type: 'audio/wav' });
-    const url = URL.createObjectURL(blob);
-
-    const audio = new Audio(url);
-    audio.play().catch(err => console.error('Playback error:', err));
-  }
-};
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'audio' && msg.audio_event?.audio_base_64) {
+          const pcmBytes = Uint8Array.from(atob(msg.audio_event.audio_base_64), c => c.charCodeAt(0));
+          const wavBuffer = pcm16ToWav(pcmBytes, 16000);
+          const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audio.play().catch(err => console.error('Playback error:', err));
+        }
+      } catch (err) {
+        console.error('Error processing message:', err);
+      }
+    };
 
     ws.onerror = (err) => console.error('WebSocket error:', err);
-    ws.onclose = () => console.log('Agent conversation ended');
+    ws.onclose = () => console.log('❌ Agent conversation ended');
   } catch (error) {
     console.error('Failed to connect to the agent:', error);
   }
 });
-
-
 
 
 })();
