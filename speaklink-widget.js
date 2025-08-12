@@ -160,10 +160,16 @@
       <button id="speaklink-close-btn" title="Close widget" style="background:transparent; border:none; color:white; font-size:20px; line-height:1; cursor:pointer;">&times;</button>
     </div>
     <div id="speaklink-content" style="padding:10px; max-height:480px; overflow-y:auto;">
-      <label id="uploadImgLbl" for="uploadImage" style="display:block; margin-bottom:10px; cursor:pointer;">
-        📁 Upload Image to Translate
-      </label>
-      <input type="file" id="uploadImage" accept="image/*" style="display:none" />
+	<div style="display:flex; align-items:center; gap:40%;">
+	  <label id="uploadImgLbl" for="uploadImage" style="background-color:#007bff;color:white;border:none;padding:8px 12px;cursor:pointer;border-radius:4px;">
+		📁 Upload Image to Translate
+	  </label>
+	  <input type="file" id="uploadImage" accept="image/*" style="display:none" />
+	  
+	  <button id="callAgentBtn" style="background-color:#28a745;color:white;border:none;padding:8px 12px;cursor:pointer;border-radius:4px;margin-top:0px!important;">
+		🤖 Call Agent
+	  </button>
+	</div>
       <div class="image-container" style="display:flex; gap:10px; margin-bottom:10px;">
         <div class="image-box" style="flex:1; text-align:center;">
           <h4>Uploaded Image:</h4>
@@ -600,5 +606,81 @@ async function speakWithElevenLabs(text) {
     console.error('Error with ElevenLabs TTS:', err);
   }
 }
+
+const AGENT_ID = "agent_6201k2ffwmaveefrthddgxr6mmfv"; // Replace with your agent ID
+
+
+
+
+function pcm16ToWav(pcmBytes, sampleRate = 16000) {
+  const buffer = new ArrayBuffer(44 + pcmBytes.length);
+  const view = new DataView(buffer);
+
+  // RIFF chunk descriptor
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + pcmBytes.length, true);
+  writeString(view, 8, 'WAVE');
+
+  // FMT sub-chunk
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true); // Subchunk size (16 for PCM)
+  view.setUint16(20, 1, true);  // PCM format
+  view.setUint16(22, 1, true);  // Mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); // Byte rate (SampleRate * NumChannels * BytesPerSample)
+  view.setUint16(32, 2, true);  // Block align (NumChannels * BytesPerSample)
+  view.setUint16(34, 16, true); // Bits per sample
+
+  // data sub-chunk
+  writeString(view, 36, 'data');
+  view.setUint32(40, pcmBytes.length, true);
+
+  // Write PCM samples
+  new Uint8Array(buffer, 44).set(pcmBytes);
+
+  return buffer;
+}
+
+function writeString(view, offset, string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
+}
+
+widget.querySelector('#callAgentBtn').addEventListener('click', async () => {
+  try {
+    // Connect WebSocket
+    //const ws = new WebSocket(signed_url || `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${AGENT_ID}`);
+const ws = new WebSocket(`wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${AGENT_ID}&api_key=YOUR_API_KEY`);
+
+    ws.onopen = () => {
+      console.log('Connected to ElevenLabs agent via WebSocket');
+      ws.send(JSON.stringify({ type: "conversation_initiation_client_data" }));
+    };
+
+ws.onmessage = (e) => {
+  const msg = JSON.parse(e.data);
+  if (msg.type === 'audio' && msg.audio_event?.audio_base_64) {
+    const pcmBytes = Uint8Array.from(atob(msg.audio_event.audio_base_64), c => c.charCodeAt(0));
+
+    // Convert PCM to WAV
+    const wavBuffer = pcm16ToWav(pcmBytes, 16000);
+    const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+
+    const audio = new Audio(url);
+    audio.play().catch(err => console.error('Playback error:', err));
+  }
+};
+
+    ws.onerror = (err) => console.error('WebSocket error:', err);
+    ws.onclose = () => console.log('Agent conversation ended');
+  } catch (error) {
+    console.error('Failed to connect to the agent:', error);
+  }
+});
+
+
+
 
 })();
