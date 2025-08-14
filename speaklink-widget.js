@@ -576,7 +576,7 @@ async function loadData(image, cropRect, devicePixelRatio = 1) {
 }
 
 async function speakWithElevenLabs(text) {
-  const API_KEY = 'sk_4ca9a698d23bfb977bd17c99135db7c22f762ad4ed07214f'; // Replace with your key
+  const API_KEY = 'sk_08d752ed048a6554a096a74abfb7471c5cedded9648baed7'; // Replace with your key
   const VOICE_ID = 'NEqPvTuKWuvwUMAEPBPR'; // Example: Rachel voice
 
   try {
@@ -625,8 +625,8 @@ if ('webkitSpeechRecognition' in window) {
 
 widget.querySelector('#callAgentBtn').addEventListener('click', () => {
   console.log("Connecting to ElevenLabs agent...");
-  const AGENT_ID = "agent_6201k2ffwmaveefrthddgxr6mmfv"; // Your agent ID
-  const API_KEY = "sk_4ca9a698d23bfb977bd17c99135db7c22f762ad4ed07214f"; // Replace with your ElevenLabs API key
+  const AGENT_ID = "agent_2201k2kqp45qesqrafamzyvff846"; // Your agent ID
+  const API_KEY = "sk_08d752ed048a6554a096a74abfb7471c5cedded9648baed7"; // Replace with your ElevenLabs API key
 
 
   ws = new WebSocket(`wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${AGENT_ID}&api_key=${API_KEY}`);
