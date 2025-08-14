@@ -621,41 +621,41 @@ let isListening = false;
 let isPlayingAudio = false;
 
 if ('webkitSpeechRecognition' in window) {
-    recognition = new webkitSpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = "fil-PH"; // Filipino
+    voiceRecognition = new webkitSpeechRecognition();
+    voiceRecognition.continuous = false;
+    voiceRecognition.interimResults = false;
+    voiceRecognition.lang = "fil-PH"; // Filipino
 } else {
-    console.error("Speech recognition not supported in this browser.");
+    console.error("Speech voiceRecognition not supported in this browser.");
 }
 
 function startSpeechRecognition() {
     if (isListening || isPlayingAudio) {
-        console.log("⚠ Not starting recognition — already listening or playing.");
+        console.log("⚠ Not starting voiceRecognition — already listening or playing.");
         return;
     }
     isListening = true;
 
-    recognition.start();
+    voiceRecognition.start();
     console.log("🎤 Listening...");
 
-    recognition.onresult = (event) => {
+    voiceRecognition.onresult = (event) => {
         const transcript = event.results[0][0].transcript.trim();
         console.log("🗣 Recognized text:", transcript);
 
         handleConversationFlow(transcript);
 
-        recognition.stop();
+        voiceRecognition.stop();
     };
 
-    recognition.onend = () => {
+    voiceRecognition.onend = () => {
         isListening = false;
         console.log("⏹ Listening stopped.");
     };
 
-    recognition.onerror = (event) => {
+    voiceRecognition.onerror = (event) => {
         isListening = false;
-        console.error("Speech recognition error:", event.error);
+        console.error("Speech voiceRecognition error:", event.error);
     };
 }
 
@@ -748,9 +748,9 @@ widget.querySelector('#callAgentBtn').addEventListener('click', () => {
                     const audio = new Audio(url);
                     isPlayingAudio = true;
 
-                    if (recognition) {
+                    if (voiceRecognition) {
                         isListening = false;
-                        recognition.stop();
+                        voiceRecognition.stop();
                     }
 
                     audio.onended = () => {
@@ -775,7 +775,7 @@ widget.querySelector('#callAgentBtn').addEventListener('click', () => {
 
 widget.querySelector('#stopAgentBtn').addEventListener('click', () => {
 	toggleButtons(false); // Enable Call, disable Stop
-    if (recognition) recognition.stop();
+    if (voiceRecognition) voiceRecognition.stop();
     if (ws) ws.close();
     isListening = false;
     console.log("🛑 Agent stopped.");
