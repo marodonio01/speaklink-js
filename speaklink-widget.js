@@ -629,23 +629,9 @@ widget.querySelector('#callAgentBtn').addEventListener('click', () => {
   };
 
   ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-
-    if (msg.type === "agent_response") {
-      console.log("Agent text:", msg.text);
-    }
-
-    if (msg.type === "audio" && msg.audio_event?.audio_base_64) {
-      const pcmBytes = Uint8Array.from(atob(msg.audio_event.audio_base_64), c => c.charCodeAt(0));
-      const wavBuffer = pcm16ToWav(pcmBytes, 16000);
-      const audioURL = URL.createObjectURL(new Blob([wavBuffer], { type: 'audio/wav' }));
-
-      const audio = new Audio(audioURL);
-      audio.onended = () => {
-        console.log("🔄 Agent finished speaking, listening again...");
-        startSpeechRecognition(); // Restart listening after reply
-      };
-      audio.play();
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'audio' && msg.audio_event?.audio_base_64) {
+        playAgentAudioFromBase64(msg.audio_event.audio_base_64);
     }
   };
 
@@ -653,44 +639,57 @@ widget.querySelector('#callAgentBtn').addEventListener('click', () => {
   ws.onclose = () => console.log("❌ Agent connection closed");
 });
 
+let isListening = false;
+let isPlayingAudio = false;
+
 function startSpeechRecognition() {
-  if (!('webkitSpeechRecognition' in window)) {
-    alert("Speech Recognition not supported in this browser. Use Chrome.");
-    return;
-  }
-
-  if (isListening) return; // Prevent multiple listeners
-  isListening = true;
-
-  recognition = new webkitSpeechRecognition();
-  recognition.lang = 'en-US'; // Or 'fil-PH' for Filipino
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
-
-  recognition.start();
-  console.log("🎤 Listening...");
-
-  recognition.onresult = (event) => {
-    const transcript = event.results[0][0].transcript;
-    console.log("🎤 Recognized:", transcript);
-
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        type: "user_message",
-        text: transcript
-      }));
+    if (isListening || isPlayingAudio) {
+        console.log("⚠ Not starting recognition — either already listening or playing audio.");
+        return;
     }
-  };
+    isListening = true;
+    recognition.start();
+    console.log("🎤 Listening...");
+}
 
-  recognition.onerror = (event) => {
-    console.error("Speech recognition error:", event.error);
+recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript.trim();
+    console.log("🗣 Recognized text:", transcript);
+
+    // Send recognized text to agent
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "input_text", text: transcript }));
+    }
+};
+
+recognition.onend = () => {
     isListening = false;
-  };
-
-  recognition.onend = () => {
     console.log("⏹ Listening stopped.");
+};
+
+recognition.onerror = (event) => {
     isListening = false;
-  };
+    console.error("Speech recognition error:", event.error);
+};
+
+// Play agent audio
+function playAgentAudioFromBase64(base64) {
+    const pcmBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    const wavBuffer = pcm16ToWav(pcmBytes, 16000);
+    const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+
+    const audio = new Audio(url);
+    isPlayingAudio = true;
+    recognition.stop(); // stop listening before playing
+
+    audio.onended = () => {
+        isPlayingAudio = false;
+        console.log("🔄 Agent finished speaking, restarting listening...");
+        setTimeout(() => startSpeechRecognition(), 500);
+    };
+
+    audio.play().catch(err => console.error("Playback error:", err));
 }
 
 function pcm16ToWav(pcmBytes, sampleRate = 16000) {
