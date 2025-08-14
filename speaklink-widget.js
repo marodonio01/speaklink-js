@@ -614,13 +614,13 @@ let ws;
 let recognition;
 let isListening = false;
 let isPlayingAudio = false;
-let audioChunks = []; // buffer for incoming audio chunks
+let conversationStage = 0;
 
 if ('webkitSpeechRecognition' in window) {
     recognition = new webkitSpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = false;
-    recognition.lang = "en-US";
+    recognition.lang = "fil-PH"; // Filipino
 } else {
     console.error("Speech recognition not supported in this browser.");
 }
@@ -635,17 +635,16 @@ function startSpeechRecognition() {
     recognition.start();
     console.log("🎤 Listening...");
 
-	recognition.onresult = (event) => {
-		const transcript = event.results[0][0].transcript.trim();
-		  console.log("🗣 Recognized text:", transcript);
+    recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript.trim();
+        console.log("🗣 Recognized text:", transcript);
 
-		  // Send to agent
-		  sendUserTextToAgent(transcript);
+        // Send to agent
+        sendUserTextToAgent(transcript);
 
-		  // Stop SR to avoid overlap while agent replies
-		  recognition.stop();
-	};
-
+        // Stop SR to avoid overlap while agent replies
+        recognition.stop();
+    };
 
     recognition.onend = () => {
         isListening = false;
@@ -654,59 +653,31 @@ function startSpeechRecognition() {
 
     recognition.onerror = (event) => {
         isListening = false;
-        console.error("Speech recognition error:", event.error);
+        if (event.error === "aborted") {
+            console.log("ℹ Recognition aborted intentionally.");
+        } else {
+            console.error("Speech recognition error:", event.error);
+        }
     };
 }
 
 function sendUserTextToAgent(text) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    console.warn("WS not open; cannot send text.");
-    return;
-  }
-
-  // 1) Append the user's text as a conversation item
-  ws.send(JSON.stringify({
-    type: "conversation_item.append",
-    item: { type: "input_text", text }
-  }));
-  console.log("➡️  Sent conversation_item.append:", text);
-
-  // 2) Commit the item (marks input complete)
-  ws.send(JSON.stringify({ type: "conversation_item.commit" }));
-  console.log("✅ Sent conversation_item.commit");
-
-  // 3) Ask the agent to respond
-  ws.send(JSON.stringify({ type: "response.create" }));
-  console.log("🟢 Sent response.create");
-}
-
-function playBufferedAudio(chunks) {
-    if (!chunks.length) return;
-
-    // Merge PCM bytes from all chunks
-    const pcmData = chunks.flatMap(base64 =>
-        Array.from(Uint8Array.from(atob(base64), c => c.charCodeAt(0)))
-    );
-    const pcmBytes = new Uint8Array(pcmData);
-    const wavBuffer = pcm16ToWav(pcmBytes, 16000);
-    const blob = new Blob([wavBuffer], { type: 'audio/wav' });
-    const url = URL.createObjectURL(blob);
-
-    const audio = new Audio(url);
-    isPlayingAudio = true;
-
-    if (recognition) {
-        isListening = false;
-        recognition.stop();
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        console.warn("WS not open; cannot send text.");
+        return;
     }
 
-    audio.onended = () => {
-        isPlayingAudio = false;
-        console.log("🔄 Agent finished speaking, restarting listening...");
-        setTimeout(() => startSpeechRecognition(), 500);
-    };
+    ws.send(JSON.stringify({
+        type: "conversation_item.append",
+        item: { type: "input_text", text }
+    }));
+    console.log("➡️  Sent conversation_item.append:", text);
 
-    audio.play().catch(err => console.error("Playback error:", err));
+    ws.send(JSON.stringify({ type: "conversation_item.commit" }));
+    console.log("✅ Sent conversation_item.commit");
+
+    ws.send(JSON.stringify({ type: "response.create" }));
+    console.log("🟢 Sent response.create");
 }
 
 function pcm16ToWav(pcmBytes, sampleRate = 16000) {
@@ -744,68 +715,67 @@ widget.querySelector('#callAgentBtn').addEventListener('click', () => {
 
     ws.onopen = () => {
         console.log("✅ Connected to agent.");
-        ws.send(JSON.stringify({ type: "conversation_initiation_client_data" }));
-        startSpeechRecognition();
+        conversationStage = 0;
+
+        // 🔹 Send initial greeting in Filipino
+        ws.send(JSON.stringify({
+            type: "conversation_item.append",
+            item: { type: "input_text", text: "Magandang araw! Ano ang pangalan mo?" }
+        }));
+        ws.send(JSON.stringify({ type: "conversation_item.commit" }));
+        ws.send(JSON.stringify({ type: "response.create" }));
     };
 
-let audioBufferChunks = [];
-let audioPlayTimer = null;
+    let audioBufferChunks = [];
+    let audioPlayTimer = null;
 
-ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
+    ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
 
-    if (msg.type === 'audio' && msg.audio_event?.audio_base_64) {
-        // Add chunk to buffer
-        const pcmBytes = Uint8Array.from(atob(msg.audio_event.audio_base_64), c => c.charCodeAt(0));
-        audioBufferChunks.push(pcmBytes);
+        if (msg.type === 'audio' && msg.audio_event?.audio_base_64) {
+            const pcmBytes = Uint8Array.from(atob(msg.audio_event.audio_base_64), c => c.charCodeAt(0));
+            audioBufferChunks.push(pcmBytes);
 
-        // Reset timer each time we get audio
-        if (audioPlayTimer) clearTimeout(audioPlayTimer);
+            if (audioPlayTimer) clearTimeout(audioPlayTimer);
 
-        // Wait 500ms after last chunk to play
-        audioPlayTimer = setTimeout(() => {
-            if (audioBufferChunks.length > 0) {
-                console.log(`🎧 Playing buffered audio (${audioBufferChunks.length} chunks)`);
+            audioPlayTimer = setTimeout(() => {
+                if (audioBufferChunks.length > 0) {
+                    console.log(`🎧 Playing buffered audio (${audioBufferChunks.length} chunks)`);
 
-                // Merge all chunks
-                const totalLength = audioBufferChunks.reduce((acc, chunk) => acc + chunk.length, 0);
-                const mergedPCM = new Uint8Array(totalLength);
-                let offset = 0;
-                for (const chunk of audioBufferChunks) {
-                    mergedPCM.set(chunk, offset);
-                    offset += chunk.length;
-                }
-
-                // Convert to WAV and play
-                const wavBuffer = pcm16ToWav(mergedPCM, 16000);
-                const blob = new Blob([wavBuffer], { type: 'audio/wav' });
-                const url = URL.createObjectURL(blob);
-
-                const audio = new Audio(url);
-                isPlayingAudio = true;
-
-                if (recognition) {
-                    isListening = false;
-                    recognition.stop();
-                }
-
-                audio.onended = () => {
-                    console.log("🔄 Agent finished speaking, restarting listening...");
-                    isPlayingAudio = false;
-                    if (!isListening && !isPlayingAudio) {
-                        setTimeout(() => startSpeechRecognition(), 500);
+                    const totalLength = audioBufferChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+                    const mergedPCM = new Uint8Array(totalLength);
+                    let offset = 0;
+                    for (const chunk of audioBufferChunks) {
+                        mergedPCM.set(chunk, offset);
+                        offset += chunk.length;
                     }
-                };
 
-                audio.play().catch(err => console.error("Playback error:", err));
+                    const wavBuffer = pcm16ToWav(mergedPCM, 16000);
+                    const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+                    const url = URL.createObjectURL(blob);
 
-                // Clear buffer
-                audioBufferChunks = [];
-            }
-        }, 500);
-    }
-};
+                    const audio = new Audio(url);
+                    isPlayingAudio = true;
 
+                    if (recognition) {
+                        isListening = false;
+                        recognition.stop();
+                    }
+
+                    audio.onended = () => {
+                        console.log("🔄 Agent finished speaking, restarting listening...");
+                        isPlayingAudio = false;
+                        if (!isListening && !isPlayingAudio) {
+                            setTimeout(() => startSpeechRecognition(), 500);
+                        }
+                    };
+
+                    audio.play().catch(err => console.error("Playback error:", err));
+                    audioBufferChunks = [];
+                }
+            }, 500);
+        }
+    };
 
     ws.onerror = (err) => console.error("WebSocket error:", err);
     ws.onclose = () => console.log("❌ Agent connection closed");
@@ -817,6 +787,8 @@ widget.querySelector('#stopAgentBtn').addEventListener('click', () => {
     isListening = false;
     console.log("🛑 Agent stopped.");
 });
+
+
 
 
 
