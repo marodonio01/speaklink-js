@@ -639,7 +639,6 @@ widget.querySelector('#callAgentBtn').addEventListener('click', () => {
   ws.onclose = () => console.log("❌ Agent connection closed");
 });
 
-let isListening = false;
 let isPlayingAudio = false;
 
 function startSpeechRecognition() {
