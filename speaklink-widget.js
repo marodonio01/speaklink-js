@@ -618,7 +618,7 @@ if ('webkitSpeechRecognition' in window) {
     recognition = new webkitSpeechRecognition();
     recognition.continuous = false; // stop after one result
     recognition.interimResults = false;
-    recognition.lang = "en-US"; // change to your language if needed
+    recognition.lang = "fil-PH"; // change to your language if needed
 } else {
     console.error("Speech recognition not supported in this browser.");
 }
