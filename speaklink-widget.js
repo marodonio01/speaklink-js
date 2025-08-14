@@ -633,6 +633,24 @@ function startSpeechRecognition() {
 
     recognition.start();
     console.log("🎤 Listening...");
+	// When speech is recognized, just log it
+	recognition.onresult = (event) => {
+		const transcript = event.results[0][0].transcript.trim();
+		console.log("🗣 Recognized text (for debug only):", transcript);
+		
+		// Stop recognition after capturing speech
+		recognition.stop();
+	};
+
+	recognition.onend = () => {
+		isListening = false;
+		console.log("⏹ Listening stopped.");
+	};
+
+	recognition.onerror = (event) => {
+		isListening = false;
+		console.error("Speech recognition error:", event.error);
+	};
 }
 
 
@@ -650,13 +668,26 @@ function playAgentAudioFromBase64(base64) {
         recognition.stop();
     }
 
-    audio.onended = () => {
-        isPlayingAudio = false;
-        console.log("🔄 Agent finished speaking, restarting listening...");
-        if (!isListening && !isPlayingAudio) { // ✅ Only restart if safe
-            setTimeout(() => startSpeechRecognition(), 500);
-        }
-    };
+	let restartTimeout = null;
+
+	audio.onended = () => {
+		console.log("🔄 Agent finished speaking...");
+
+		if (restartTimeout) {
+			clearTimeout(restartTimeout); // prevent duplicate restart timers
+		}
+
+		isPlayingAudio = false;
+
+		if (!isListening && !isPlayingAudio) { // ✅ Only restart if safe
+			restartTimeout = setTimeout(() => {
+				console.log("🎤 Restarting speech recognition...");
+				startSpeechRecognition();
+			}, 500);
+		} else {
+			console.log("⚠ Skipping restart — still listening or playing audio.");
+		}
+	};
 
     audio.play().catch(err => console.error("Playback error:", err));
 }
@@ -698,7 +729,6 @@ widget.querySelector('#callAgentBtn').addEventListener('click', () => {
     ws.onopen = () => {
         console.log("✅ Connected to agent.");
         ws.send(JSON.stringify({ type: "conversation_initiation_client_data" }));
-        startSpeechRecognition();
     };
 
     ws.onmessage = (event) => {
