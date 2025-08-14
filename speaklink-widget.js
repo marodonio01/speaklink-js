@@ -655,30 +655,41 @@ function startSpeechRecognition() {
         console.log("⚠ Not starting recognition — either already listening or playing audio.");
         return;
     }
+
+    // Recreate recognition each time to avoid stale events
+    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript.trim();
+        console.log("🗣 Recognized text:", transcript);
+
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "input_text", text: transcript }));
+        }
+    };
+
+    recognition.onend = () => {
+        isListening = false;
+        console.log("⏹ Listening stopped.");
+    };
+
+    recognition.onerror = (event) => {
+        isListening = false;
+        if (event.error === "aborted") {
+            console.log("ℹ Recognition aborted intentionally.");
+        } else {
+            console.error("Speech recognition error:", event.error);
+        }
+    };
+
     isListening = true;
     recognition.start();
     console.log("🎤 Listening...");
 }
 
-recognition.onresult = (event) => {
-    const transcript = event.results[0][0].transcript.trim();
-    console.log("🗣 Recognized text:", transcript);
-
-    // Send recognized text to agent
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "input_text", text: transcript }));
-    }
-};
-
-recognition.onend = () => {
-    isListening = false;
-    console.log("⏹ Listening stopped.");
-};
-
-recognition.onerror = (event) => {
-    isListening = false;
-    console.error("Speech recognition error:", event.error);
-};
 
 // Play agent audio
 function playAgentAudioFromBase64(base64) {
