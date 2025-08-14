@@ -652,15 +652,15 @@ let isPlayingAudio = false;
 
 function startSpeechRecognition() {
     if (isListening || isPlayingAudio) {
-        console.log("⚠ Not starting recognition — either already listening or playing audio.");
+        console.log("⚠ Not starting recognition — already listening or playing.");
         return;
     }
 
-    // Recreate recognition each time to avoid stale events
     recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
     recognition.lang = "en-US";
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
+    recognition.continuous = false; // short listens, restart manually
 
     recognition.onresult = (event) => {
         const transcript = event.results[0][0].transcript.trim();
@@ -674,6 +674,7 @@ function startSpeechRecognition() {
     recognition.onend = () => {
         isListening = false;
         console.log("⏹ Listening stopped.");
+        // Don't close ws here, just wait for next trigger
     };
 
     recognition.onerror = (event) => {
@@ -686,9 +687,12 @@ function startSpeechRecognition() {
     };
 
     isListening = true;
-    recognition.start();
-    console.log("🎤 Listening...");
+    setTimeout(() => {
+        recognition.start();
+        console.log("🎤 Listening...");
+    }, 300); // slight delay avoids race with stop()
 }
+
 
 
 // Play agent audio
