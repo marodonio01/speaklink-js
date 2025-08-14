@@ -154,6 +154,11 @@
 		label#uploadImgLbl:hover {
 		  background-color: #0056b3;
 		}
+		button:disabled {
+    background-color: grey !important;
+    cursor: not-allowed !important;
+    opacity: 0.6; /* optional, to make it look more disabled */
+}
     </style>
     <div id="speaklink-header" style="background:#0366d6; color:white; font-weight:bold; padding:8px 10px; cursor:move; display:flex; justify-content:space-between; align-items:center; border-radius: 6px 6px 0 0;">
       SpeakLink Translator
@@ -699,6 +704,7 @@ function writeString(view, offset, string) {
 
 widget.querySelector('#callAgentBtn').addEventListener('click', () => {
     console.log("Connecting to ElevenLabs agent...");
+	toggleButtons(true); // Disable Call, enable Stop
     const AGENT_ID = "agent_5801k2mh5rg1fz5906qx467j62rn";
     const API_KEY = "sk_d60f10b696c0377a0e15d77f221d54d26a8e4eb4d108c1ca";
 
@@ -768,13 +774,24 @@ widget.querySelector('#callAgentBtn').addEventListener('click', () => {
 });
 
 widget.querySelector('#stopAgentBtn').addEventListener('click', () => {
+	toggleButtons(false); // Enable Call, disable Stop
     if (recognition) recognition.stop();
     if (ws) ws.close();
     isListening = false;
     console.log("🛑 Agent stopped.");
 });
 
+const callBtn = widget.querySelector('#callAgentBtn');
+const stopBtn = widget.querySelector('#stopAgentBtn');
 
+// Initial state
+callBtn.disabled = false;
+stopBtn.disabled = true;
+
+function toggleButtons(isCalling) {
+    callBtn.disabled = isCalling;
+    stopBtn.disabled = !isCalling;
+}
 
 
 })();
