@@ -616,7 +616,7 @@ async function speakWithElevenLabs(text) {
 
 // === Call Agent Button with STT + Agent Reply Loop (Buffered Playback) ===
 let ws;
-let recognition;
+let voiceRecognition;
 let isListening = false;
 let isPlayingAudio = false;
 
