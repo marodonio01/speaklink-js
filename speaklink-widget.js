@@ -631,32 +631,10 @@ function startSpeechRecognition() {
     }
     isListening = true;
 
-    recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript.trim();
-        console.log("🗣 Recognized text:", transcript);
-
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: "input_text", text: transcript }));
-        }
-    };
-
-    recognition.onend = () => {
-        isListening = false;
-        console.log("⏹ Listening stopped.");
-    };
-
-    recognition.onerror = (event) => {
-        isListening = false;
-        if (event.error === "aborted") {
-            console.log("ℹ Recognition aborted intentionally.");
-        } else {
-            console.error("Speech recognition error:", event.error);
-        }
-    };
-
     recognition.start();
     console.log("🎤 Listening...");
 }
+
 
 function playAgentAudioFromBase64(base64) {
     const pcmBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
@@ -666,16 +644,23 @@ function playAgentAudioFromBase64(base64) {
 
     const audio = new Audio(url);
     isPlayingAudio = true;
-    if (recognition) recognition.stop();
+
+    if (recognition) {
+        isListening = false; // ✅ Reset listening flag
+        recognition.stop();
+    }
 
     audio.onended = () => {
         isPlayingAudio = false;
         console.log("🔄 Agent finished speaking, restarting listening...");
-        setTimeout(() => startSpeechRecognition(), 500);
+        if (!isListening && !isPlayingAudio) { // ✅ Only restart if safe
+            setTimeout(() => startSpeechRecognition(), 500);
+        }
     };
 
     audio.play().catch(err => console.error("Playback error:", err));
 }
+
 
 function pcm16ToWav(pcmBytes, sampleRate = 16000) {
     const buffer = new ArrayBuffer(44 + pcmBytes.length);
