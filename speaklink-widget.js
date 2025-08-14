@@ -629,7 +629,7 @@ widget.querySelector('#callAgentBtn').addEventListener('click', () => {
   };
 
   ws.onmessage = (event) => {
-    const msg = JSON.parse(e.data);
+    const msg = JSON.parse(event.data);
     if (msg.type === 'audio' && msg.audio_event?.audio_base_64) {
         playAgentAudioFromBase64(msg.audio_event.audio_base_64);
     }
