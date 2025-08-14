@@ -689,16 +689,27 @@ function playAgentAudioFromBase64(base64) {
 
     const audio = new Audio(url);
     isPlayingAudio = true;
-    recognition.stop(); // stop listening before playing
+
+    if (recognition) {
+        recognition.onend = () => {
+            console.log("🎤 Recognition fully stopped.");
+        };
+        recognition.stop();
+    }
 
     audio.onended = () => {
         isPlayingAudio = false;
         console.log("🔄 Agent finished speaking, restarting listening...");
-        setTimeout(() => startSpeechRecognition(), 500);
+
+        // Wait a bit, then start again
+        setTimeout(() => {
+            startSpeechRecognition();
+        }, 300); // Reduced delay but still safe
     };
 
     audio.play().catch(err => console.error("Playback error:", err));
 }
+
 
 function pcm16ToWav(pcmBytes, sampleRate = 16000) {
   const buffer = new ArrayBuffer(44 + pcmBytes.length);
