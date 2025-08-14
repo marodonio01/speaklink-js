@@ -614,6 +614,15 @@ let ws;
 let recognition;
 let isListening = false;
 
+if ('webkitSpeechRecognition' in window) {
+    recognition = new webkitSpeechRecognition();
+    recognition.continuous = false; // stop after one result
+    recognition.interimResults = false;
+    recognition.lang = "en-US"; // change to your language if needed
+} else {
+    console.error("Speech recognition not supported in this browser.");
+}
+
 widget.querySelector('#callAgentBtn').addEventListener('click', () => {
   console.log("Connecting to ElevenLabs agent...");
   const AGENT_ID = "agent_6201k2ffwmaveefrthddgxr6mmfv"; // Your agent ID
