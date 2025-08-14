@@ -614,7 +614,6 @@ let ws;
 let recognition;
 let isListening = false;
 let isPlayingAudio = false;
-let conversationStage = 0;
 
 if ('webkitSpeechRecognition' in window) {
     recognition = new webkitSpeechRecognition();
@@ -639,10 +638,8 @@ function startSpeechRecognition() {
         const transcript = event.results[0][0].transcript.trim();
         console.log("🗣 Recognized text:", transcript);
 
-        // Send to agent
-        sendUserTextToAgent(transcript);
+        handleConversationFlow(transcript);
 
-        // Stop SR to avoid overlap while agent replies
         recognition.stop();
     };
 
@@ -653,31 +650,25 @@ function startSpeechRecognition() {
 
     recognition.onerror = (event) => {
         isListening = false;
-        if (event.error === "aborted") {
-            console.log("ℹ Recognition aborted intentionally.");
-        } else {
-            console.error("Speech recognition error:", event.error);
-        }
+        console.error("Speech recognition error:", event.error);
     };
 }
 
-function sendUserTextToAgent(text) {
+function handleConversationFlow(userText) {
+    sendUserTextToAgent(userText);
+}
+
+function sendUserTextToAgent(userText) {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         console.warn("WS not open; cannot send text.");
         return;
     }
 
     ws.send(JSON.stringify({
-        type: "conversation_item.append",
-        item: { type: "input_text", text }
+        type: "user_message",
+        text: userText
     }));
-    console.log("➡️  Sent conversation_item.append:", text);
 
-    ws.send(JSON.stringify({ type: "conversation_item.commit" }));
-    console.log("✅ Sent conversation_item.commit");
-
-    ws.send(JSON.stringify({ type: "response.create" }));
-    console.log("🟢 Sent response.create");
 }
 
 function pcm16ToWav(pcmBytes, sampleRate = 16000) {
@@ -715,15 +706,9 @@ widget.querySelector('#callAgentBtn').addEventListener('click', () => {
 
     ws.onopen = () => {
         console.log("✅ Connected to agent.");
+        ws.send(JSON.stringify({ type: "conversation_initiation_client_data" }));
         conversationStage = 0;
-
-        // 🔹 Send initial greeting in Filipino
-        ws.send(JSON.stringify({
-            type: "conversation_item.append",
-            item: { type: "input_text", text: "Magandang araw! Ano ang pangalan mo?" }
-        }));
-        ws.send(JSON.stringify({ type: "conversation_item.commit" }));
-        ws.send(JSON.stringify({ type: "response.create" }));
+        startSpeechRecognition();
     };
 
     let audioBufferChunks = [];
@@ -771,6 +756,7 @@ widget.querySelector('#callAgentBtn').addEventListener('click', () => {
                     };
 
                     audio.play().catch(err => console.error("Playback error:", err));
+
                     audioBufferChunks = [];
                 }
             }, 500);
@@ -787,7 +773,6 @@ widget.querySelector('#stopAgentBtn').addEventListener('click', () => {
     isListening = false;
     console.log("🛑 Agent stopped.");
 });
-
 
 
 
