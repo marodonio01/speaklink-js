@@ -609,58 +609,27 @@ async function speakWithElevenLabs(text) {
   }
 }
 
-// === Call Agent Button with Mic Streaming ===
+// === Call Agent Button with STT + Agent Reply Loop ===
 let ws;
 let recognition;
 let isListening = false;
+let isPlayingAudio = false;
 
 if ('webkitSpeechRecognition' in window) {
     recognition = new webkitSpeechRecognition();
-    recognition.continuous = false; // stop after one result
+    recognition.continuous = false;
     recognition.interimResults = false;
-    recognition.lang = "fil-PH"; // change to your language if needed
+    recognition.lang = "en-US";
 } else {
     console.error("Speech recognition not supported in this browser.");
 }
-
-widget.querySelector('#callAgentBtn').addEventListener('click', () => {
-  console.log("Connecting to ElevenLabs agent...");
-  const AGENT_ID = "agent_2201k2kqp45qesqrafamzyvff846"; // Your agent ID
-  const API_KEY = "sk_08d752ed048a6554a096a74abfb7471c5cedded9648baed7"; // Replace with your ElevenLabs API key
-
-
-  ws = new WebSocket(`wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${AGENT_ID}&api_key=${API_KEY}`);
-
-  ws.onopen = () => {
-    console.log("✅ Connected to agent.");
-    ws.send(JSON.stringify({ type: "conversation_initiation_client_data" }));
-    startSpeechRecognition(); // Start listening immediately
-  };
-
-  ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    if (msg.type === 'audio' && msg.audio_event?.audio_base_64) {
-        playAgentAudioFromBase64(msg.audio_event.audio_base_64);
-    }
-  };
-
-  ws.onerror = (err) => console.error("WebSocket error:", err);
-  ws.onclose = () => console.log("❌ Agent connection closed");
-});
-
-let isPlayingAudio = false;
 
 function startSpeechRecognition() {
     if (isListening || isPlayingAudio) {
         console.log("⚠ Not starting recognition — already listening or playing.");
         return;
     }
-
-    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.lang = "en-US";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognition.continuous = false; // short listens, restart manually
+    isListening = true;
 
     recognition.onresult = (event) => {
         const transcript = event.results[0][0].transcript.trim();
@@ -674,7 +643,6 @@ function startSpeechRecognition() {
     recognition.onend = () => {
         isListening = false;
         console.log("⏹ Listening stopped.");
-        // Don't close ws here, just wait for next trigger
     };
 
     recognition.onerror = (event) => {
@@ -686,16 +654,10 @@ function startSpeechRecognition() {
         }
     };
 
-    isListening = true;
-    setTimeout(() => {
-        recognition.start();
-        console.log("🎤 Listening...");
-    }, 300); // slight delay avoids race with stop()
+    recognition.start();
+    console.log("🎤 Listening...");
 }
 
-
-
-// Play agent audio
 function playAgentAudioFromBase64(base64) {
     const pcmBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
     const wavBuffer = pcm16ToWav(pcmBytes, 16000);
@@ -704,62 +666,72 @@ function playAgentAudioFromBase64(base64) {
 
     const audio = new Audio(url);
     isPlayingAudio = true;
-
-    if (recognition) {
-        recognition.onend = () => {
-            console.log("🎤 Recognition fully stopped.");
-        };
-        recognition.stop();
-    }
+    if (recognition) recognition.stop();
 
     audio.onended = () => {
         isPlayingAudio = false;
         console.log("🔄 Agent finished speaking, restarting listening...");
-
-        // Wait a bit, then start again
-        setTimeout(() => {
-            startSpeechRecognition();
-        }, 300); // Reduced delay but still safe
+        setTimeout(() => startSpeechRecognition(), 500);
     };
 
     audio.play().catch(err => console.error("Playback error:", err));
 }
 
-
 function pcm16ToWav(pcmBytes, sampleRate = 16000) {
-  const buffer = new ArrayBuffer(44 + pcmBytes.length);
-  const view = new DataView(buffer);
-
-  writeString(view, 0, 'RIFF');
-  view.setUint32(4, 36 + pcmBytes.length, true);
-  writeString(view, 8, 'WAVE');
-  writeString(view, 12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeString(view, 36, 'data');
-  view.setUint32(40, pcmBytes.length, true);
-  new Uint8Array(buffer, 44).set(pcmBytes);
-  return buffer;
+    const buffer = new ArrayBuffer(44 + pcmBytes.length);
+    const view = new DataView(buffer);
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + pcmBytes.length, true);
+    writeString(view, 8, 'WAVE');
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeString(view, 36, 'data');
+    view.setUint32(40, pcmBytes.length, true);
+    new Uint8Array(buffer, 44).set(pcmBytes);
+    return buffer;
 }
 
 function writeString(view, offset, string) {
-  for (let i = 0; i < string.length; i++) {
-    view.setUint8(offset + i, string.charCodeAt(i));
-  }
+    for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+    }
 }
 
-widget.querySelector('#stopAgentBtn').addEventListener('click', () => {
-  if (recognition) recognition.stop();
-  if (ws) ws.close();
-  isListening = false;
-  console.log("🛑 Agent stopped.");
+widget.querySelector('#callAgentBtn').addEventListener('click', () => {
+    console.log("Connecting to ElevenLabs agent...");
+    const AGENT_ID = "agent_2201k2kqp45qesqrafamzyvff846";
+    const API_KEY = "sk_08d752ed048a6554a096a74abfb7471c5cedded9648baed7";
+
+    ws = new WebSocket(`wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${AGENT_ID}&api_key=${API_KEY}`);
+
+    ws.onopen = () => {
+        console.log("✅ Connected to agent.");
+        ws.send(JSON.stringify({ type: "conversation_initiation_client_data" }));
+        startSpeechRecognition();
+    };
+
+    ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'audio' && msg.audio_event?.audio_base_64) {
+            playAgentAudioFromBase64(msg.audio_event.audio_base_64);
+        }
+    };
+
+    ws.onerror = (err) => console.error("WebSocket error:", err);
+    ws.onclose = () => console.log("❌ Agent connection closed");
 });
 
-
+widget.querySelector('#stopAgentBtn').addEventListener('click', () => {
+    if (recognition) recognition.stop();
+    if (ws) ws.close();
+    isListening = false;
+    console.log("🛑 Agent stopped.");
+});
 
 })();
