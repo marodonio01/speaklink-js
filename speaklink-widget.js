@@ -160,15 +160,17 @@
       <button id="speaklink-close-btn" title="Close widget" style="background:transparent; border:none; color:white; font-size:20px; line-height:1; cursor:pointer;">&times;</button>
     </div>
     <div id="speaklink-content" style="padding:10px; max-height:480px; overflow-y:auto;">
-	<div style="display:flex; align-items:center; gap:40%;">
+	<div style="display:flex; align-items:center; gap:30%;">
 	  <label id="uploadImgLbl" for="uploadImage" style="background-color:#007bff;color:white;border:none;padding:8px 12px;cursor:pointer;border-radius:4px;">
 		📁 Upload Image to Translate
 	  </label>
 	  <input type="file" id="uploadImage" accept="image/*" style="display:none" />
-	  
-	  <button id="callAgentBtn" style="background-color:#28a745;color:white;border:none;padding:8px 12px;cursor:pointer;border-radius:4px;margin-top:0px!important;">
-		🤖 Call Agent
-	  </button>
+	  <div style="display:flex; align-items:center;">
+		  <button id="callAgentBtn" style="background-color:#28a745;color:white;border:none;padding:8px 12px;cursor:pointer;border-radius:4px;margin-top:0px!important;">
+			🤖 Call Agent
+		  </button>
+		  <button id="stopAgentBtn" style="background:red;color:white;border:none;padding:8px 12px;cursor:pointer;border-radius:4px;margin-top:0px!important;">⏹ Stop Agent</button>
+	  </div>
 	</div>
       <div class="image-container" style="display:flex; gap:10px; margin-bottom:10px;">
         <div class="image-box" style="flex:1; text-align:center;">
@@ -607,32 +609,108 @@ async function speakWithElevenLabs(text) {
   }
 }
 
+// === Call Agent Button with Mic Streaming ===
+let ws;
+let recognition;
+let isListening = false;
+
+widget.querySelector('#callAgentBtn').addEventListener('click', () => {
+  console.log("Connecting to ElevenLabs agent...");
+  const AGENT_ID = "agent_6201k2ffwmaveefrthddgxr6mmfv"; // Your agent ID
+  const API_KEY = "sk_4ca9a698d23bfb977bd17c99135db7c22f762ad4ed07214f"; // Replace with your ElevenLabs API key
+
+
+  ws = new WebSocket(`wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${AGENT_ID}&api_key=${API_KEY}`);
+
+  ws.onopen = () => {
+    console.log("✅ Connected to agent.");
+    ws.send(JSON.stringify({ type: "conversation_initiation_client_data" }));
+    startSpeechRecognition(); // Start listening immediately
+  };
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+
+    if (msg.type === "agent_response") {
+      console.log("Agent text:", msg.text);
+    }
+
+    if (msg.type === "audio" && msg.audio_event?.audio_base_64) {
+      const pcmBytes = Uint8Array.from(atob(msg.audio_event.audio_base_64), c => c.charCodeAt(0));
+      const wavBuffer = pcm16ToWav(pcmBytes, 16000);
+      const audioURL = URL.createObjectURL(new Blob([wavBuffer], { type: 'audio/wav' }));
+
+      const audio = new Audio(audioURL);
+      audio.onended = () => {
+        console.log("🔄 Agent finished speaking, listening again...");
+        startSpeechRecognition(); // Restart listening after reply
+      };
+      audio.play();
+    }
+  };
+
+  ws.onerror = (err) => console.error("WebSocket error:", err);
+  ws.onclose = () => console.log("❌ Agent connection closed");
+});
+
+function startSpeechRecognition() {
+  if (!('webkitSpeechRecognition' in window)) {
+    alert("Speech Recognition not supported in this browser. Use Chrome.");
+    return;
+  }
+
+  if (isListening) return; // Prevent multiple listeners
+  isListening = true;
+
+  recognition = new webkitSpeechRecognition();
+  recognition.lang = 'en-US'; // Or 'fil-PH' for Filipino
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.start();
+  console.log("🎤 Listening...");
+
+  recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript;
+    console.log("🎤 Recognized:", transcript);
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: "user_message",
+        text: transcript
+      }));
+    }
+  };
+
+  recognition.onerror = (event) => {
+    console.error("Speech recognition error:", event.error);
+    isListening = false;
+  };
+
+  recognition.onend = () => {
+    console.log("⏹ Listening stopped.");
+    isListening = false;
+  };
+}
+
 function pcm16ToWav(pcmBytes, sampleRate = 16000) {
   const buffer = new ArrayBuffer(44 + pcmBytes.length);
   const view = new DataView(buffer);
 
-  // RIFF chunk descriptor
   writeString(view, 0, 'RIFF');
   view.setUint32(4, 36 + pcmBytes.length, true);
   writeString(view, 8, 'WAVE');
-
-  // FMT sub-chunk
   writeString(view, 12, 'fmt ');
-  view.setUint32(16, 16, true); // Subchunk size (16 for PCM)
-  view.setUint16(20, 1, true);  // PCM format
-  view.setUint16(22, 1, true);  // Mono
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true); // Byte rate
-  view.setUint16(32, 2, true);  // Block align
-  view.setUint16(34, 16, true); // Bits per sample
-
-  // Data sub-chunk
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
   writeString(view, 36, 'data');
   view.setUint32(40, pcmBytes.length, true);
-
-  // Write PCM samples
   new Uint8Array(buffer, 44).set(pcmBytes);
-
   return buffer;
 }
 
@@ -642,80 +720,13 @@ function writeString(view, offset, string) {
   }
 }
 
-// Float32 → PCM16 converter
-function floatTo16BitPCM(float32Array) {
-  const buffer = new ArrayBuffer(float32Array.length * 2);
-  const view = new DataView(buffer);
-  let offset = 0;
-  for (let i = 0; i < float32Array.length; i++, offset += 2) {
-    let s = Math.max(-1, Math.min(1, float32Array[i]));
-    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-  }
-  return new Uint8Array(buffer);
-}
-
-// === Call Agent Button with Mic Streaming ===
-widget.querySelector('#callAgentBtn').addEventListener('click', async () => {
-  const AGENT_ID = "agent_6201k2ffwmaveefrthddgxr6mmfv"; // Your agent ID
-  const API_KEY = "sk_4ca9a698d23bfb977bd17c99135db7c22f762ad4ed07214f"; // Replace with your ElevenLabs API key
-
-  try {
-    const wsUrl = `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${AGENT_ID}&api_key=${API_KEY}`;
-    const ws = new WebSocket(wsUrl);
-
-    ws.binaryType = "arraybuffer";
-
-    ws.onopen = async () => {
-      console.log('✅ Connected to ElevenLabs agent');
-      ws.send(JSON.stringify({ type: "conversation_initiation_client_data" }));
-
-      // === Start microphone capture ===
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const audioContext = new AudioContext({ sampleRate: 16000 });
-      const source = audioContext.createMediaStreamSource(stream);
-      const processor = audioContext.createScriptProcessor(4096, 1, 1);
-
-      source.connect(processor);
-      processor.connect(audioContext.destination);
-
-      processor.onaudioprocess = (e) => {
-        const float32Data = e.inputBuffer.getChannelData(0);
-        const pcm16Data = floatTo16BitPCM(float32Data);
-        const base64Data = btoa(String.fromCharCode(...pcm16Data));
-        ws.send(JSON.stringify({
-          type: "input_audio_buffer.append",
-          audio: base64Data
-        }));
-      };
-
-      // Signal end of audio after 10 seconds (or you can make a stop button)
-      setTimeout(() => {
-        ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
-      }, 10000);
-    };
-
-    ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        if (msg.type === 'audio' && msg.audio_event?.audio_base_64) {
-          const pcmBytes = Uint8Array.from(atob(msg.audio_event.audio_base_64), c => c.charCodeAt(0));
-          const wavBuffer = pcm16ToWav(pcmBytes, 16000);
-          const blob = new Blob([wavBuffer], { type: 'audio/wav' });
-          const url = URL.createObjectURL(blob);
-          const audio = new Audio(url);
-          audio.play().catch(err => console.error('Playback error:', err));
-        }
-      } catch (err) {
-        console.error('Error processing message:', err);
-      }
-    };
-
-    ws.onerror = (err) => console.error('WebSocket error:', err);
-    ws.onclose = () => console.log('❌ Agent conversation ended');
-  } catch (error) {
-    console.error('Failed to connect to the agent:', error);
-  }
+widget.querySelector('#stopAgentBtn').addEventListener('click', () => {
+  if (recognition) recognition.stop();
+  if (ws) ws.close();
+  isListening = false;
+  console.log("🛑 Agent stopped.");
 });
+
 
 
 })();
